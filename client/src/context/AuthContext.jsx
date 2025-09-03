@@ -1,29 +1,43 @@
+// src/context/AuthContext.jsx
+import React, { createContext, useContext, useEffect, useState } from "react";
+import app from "../lib/firebase";
+import {
+  getAuth,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+} from "firebase/auth";
 
+const AuthCtx = createContext(null);
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 
-import { createContext, useContext, useEffect, useState } from "react";
-//  get the *instance* from our lib file
-import { auth } from "../lib/firebase";
-// import only the functions from firebase/auth
-import { onAuthStateChanged } from "firebase/auth";
-
-const AuthContext = createContext(null);
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  return useContext(AuthCtx);
+}
 
 export default function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(true); // loading true until we know
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
-      setReady(true);
+      setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user }}>
-      {ready ? children : <div className="p-6">Loading…</div>}
-    </AuthContext.Provider>
-  );
+  const signInWithGoogle = async () => {
+    await signInWithPopup(auth, googleProvider);
+  };
+
+  const signOutUser = async () => {
+    await signOut(auth);
+    setUser(null);
+  };
+
+  const value = { user, loading, signInWithGoogle, signOutUser, auth };
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

@@ -1,165 +1,156 @@
 // src/pages/Profile.jsx
 import React, { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../lib/firebase";
-import { findUserByEmail, updateUser } from "../lib/api";
-
-// normalize to "a, b, c" for the form input
-const toCsv = (v) => {
-  if (Array.isArray(v)) return v.join(", ");
-  if (v == null) return "";
-  return String(v);
-};
-
-// convert "a, b, c" -> ["a","b","c"]
-const fromCsv = (s) =>
-  (s || "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import api from "../lib/api";
 
 export default function Profile() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [me, setMe] = useState(null);
+  const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
-  const [userRecord, setUserRecord] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { isSubmitting },
-  } = useForm();
-
+  // redirect if not logged in
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        window.location.href = "/login";
-        return;
-      }
+    if (!user) navigate("/login");
+  }, [user, navigate]);
+
+  // load profile by email
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
       try {
-        const rec = await findUserByEmail(u.email);
-        setUserRecord(rec || null);
-        reset({
-          full_name: rec?.full_name || "",
-          email: rec?.email || u.email || "",
-          headline: rec?.headline || "",
-          skills_csv: toCsv(rec?.skills),
-          interests_csv: toCsv(rec?.interests),
-          github_url: rec?.github_url || "",
-          colab_url: rec?.colab_url || "",
-        });
+        const all = await api.listUsers();
+        const mine = (all || []).find(u => u.email === user.email) || null;
+        setMe(mine);
+        setForm(mine || {});
+      } catch (e) {
+        console.error("Load profile failed:", e);
       } finally {
         setLoading(false);
       }
-    });
-    return () => unsub();
-  }, [reset]);
+    })();
+  }, [user]);
 
-  const onSubmit = async (vals) => {
-    if (!userRecord?.id) {
-      alert("No profile found to update. Please create one on Onboarding.");
-      return;
-    }
-    const payload = {
-      full_name: vals.full_name || "",
-      email: vals.email || "",
-      headline: vals.headline || null,
-      skills: fromCsv(vals.skills_csv),
-      interests: fromCsv(vals.interests_csv),
-      github_url: vals.github_url || null,
-      colab_url: vals.colab_url || null,
-    };
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm(f => ({ ...f, [name]: value }));
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!me) return;
+    setSaving(true);
     try {
-      await updateUser(userRecord.id, payload);
-      alert("Profile updated!");
+      await api.updateUser(me.id, {
+        full_name: form.full_name,
+        headline: form.headline,
+        skills: (form.skills || "").split(",").map(s => s.trim()).filter(Boolean),
+        interests: (form.interests || "").split(",").map(s => s.trim()).filter(Boolean),
+        github_url: form.github_url,
+        colab_url: form.colab_url,
+      });
+      alert("✅ Profile updated");
+      navigate("/dashboard");
     } catch (e) {
-      console.error("Update error:", e);
-      alert("Failed to update. Check backend and console.");
+      console.error("Update failed:", e);
+      alert("❌ Failed to update profile");
+    } finally {
+      setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen grid place-items-center">
-        <div className="text-slate-600">Loading profile…</div>
-      </div>
-    );
-  }
-
-  if (!userRecord) {
-    return (
-      <div className="min-h-screen grid place-items-center">
-        <div className="bg-white p-6 rounded shadow max-w-lg text-center">
-          <h1 className="text-xl font-semibold mb-2">No profile yet</h1>
-          <p className="text-slate-600 mb-4">
-            Create your profile on the Onboarding page.
-          </p>
-          <a
-            href="/onboarding"
-            className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded"
-          >
-            Go to Onboarding
-          </a>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="p-6">Loading profile…</div>;
+  if (!me) return <div className="p-6">No profile found. Please onboard first.</div>;
 
   return (
-    <div className="min-h-screen grid place-items-center bg-gradient-to-br from-slate-50 via-white to-indigo-50">
-      <div className="bg-white rounded-lg shadow p-6 w-full max-w-2xl">
-        <h1 className="text-xl font-semibold mb-4">Edit Profile</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 flex justify-center items-start py-10">
+      <form
+        onSubmit={handleSave}
+        className="bg-white rounded-lg shadow-md w-full max-w-lg p-6 space-y-4"
+      >
+        <h1 className="text-2xl font-bold mb-2">Edit Profile</h1>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm mb-1">Full Name *</label>
-              <input className="w-full border rounded px-3 py-2" {...register("full_name", { required: true })} />
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Email *</label>
-              <input className="w-full border rounded px-3 py-2" type="email" {...register("email", { required: true })} readOnly />
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium">Full Name *</label>
+          <input
+            name="full_name"
+            value={form.full_name || ""}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded mt-1"
+            required
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm mb-1">Headline</label>
-            <input className="w-full border rounded px-3 py-2" {...register("headline")} />
-          </div>
+        <div>
+          <label className="block text-sm font-medium">Email *</label>
+          <input
+            value={me.email}
+            disabled
+            className="w-full border px-3 py-2 rounded mt-1 bg-slate-100 text-slate-600"
+          />
+        </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm mb-1">Skills (comma separated)</label>
-              <input className="w-full border rounded px-3 py-2" {...register("skills_csv")} />
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Interests (comma separated)</label>
-              <input className="w-full border rounded px-3 py-2" {...register("interests_csv")} />
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium">Headline</label>
+          <input
+            name="headline"
+            value={form.headline || ""}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded mt-1"
+          />
+        </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm mb-1">GitHub URL</label>
-              <input className="w-full border rounded px-3 py-2" {...register("github_url")} />
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Colab URL</label>
-              <input className="w-full border rounded px-3 py-2" {...register("colab_url")} />
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium">Skills (comma separated)</label>
+          <input
+            name="skills"
+            value={(form.skills || []).join ? form.skills.join(", ") : form.skills || ""}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded mt-1"
+          />
+        </div>
 
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded disabled:bg-indigo-300"
-            >
-              {isSubmitting ? "Saving…" : "Save changes"}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div>
+          <label className="block text-sm font-medium">Interests (comma separated)</label>
+          <input
+            name="interests"
+            value={(form.interests || []).join ? form.interests.join(", ") : form.interests || ""}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded mt-1"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium">GitHub URL</label>
+          <input
+            name="github_url"
+            value={form.github_url || ""}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded mt-1"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium">Colab URL</label>
+          <input
+            name="colab_url"
+            value={form.colab_url || ""}
+            onChange={handleChange}
+            className="w-full border px-3 py-2 rounded mt-1"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </form>
     </div>
   );
 }
