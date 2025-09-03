@@ -1,62 +1,39 @@
 // src/pages/Login.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { signInWithPopup, onAuthStateChanged } from "firebase/auth";
-import { auth, googleProvider } from "../lib/firebase";
-import { findUserByEmail } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
+  const { user, loading, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
-  const [checking, setChecking] = useState(true);
 
-  // If already logged in, decide where to go
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        setChecking(false);
-        return;
-      }
-      try {
-        const existing = await findUserByEmail(u.email);
-        navigate(existing ? "/dashboard" : "/onboarding", { replace: true });
-      } catch {
-        setChecking(false);
-      }
-    });
-    return () => unsub();
-  }, [navigate]);
+    if (!loading && user) navigate("/", { replace: true });
+  }, [user, loading, navigate]);
 
-  const handleLogin = async () => {
+  const handleGoogle = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
-      const u = auth.currentUser;
-      const existing = u ? await findUserByEmail(u.email) : null;
-      navigate(existing ? "/dashboard" : "/onboarding", { replace: true });
-    } catch (err) {
-      console.error("Login error:", err);
-      alert("Login failed. Check console for details.");
+      await signInWithGoogle();
+      navigate("/", { replace: true });
+    } catch (e) {
+      console.error("Google sign-in failed:", e);
+      alert("Sign-in failed. See console for details.");
     }
   };
 
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-slate-600">Checking session…</div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-indigo-50">
-      <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-center mb-2">PeerConnect DS</h1>
-        <p className="text-center text-slate-600 mb-6">Sign in to continue</p>
-        <button
-          onClick={handleLogin}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded"
-        >
-          Continue with Google
-        </button>
+    <div className="min-h-screen flex flex-col">
+      <div className="flex-1 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white shadow rounded p-6">
+          <h1 className="text-xl font-semibold mb-4 text-center">Sign in</h1>
+          <button
+            onClick={handleGoogle}
+            disabled={loading}
+            className="w-full rounded bg-indigo-600 text-white py-2 hover:bg-indigo-700"
+          >
+            {loading ? "Loading…" : "Continue with Google"}
+          </button>
+        </div>
       </div>
     </div>
   );

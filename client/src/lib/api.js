@@ -1,4 +1,4 @@
-// src/lib/api.js
+// client/src/lib/api.js
 const API_BASE = process.env.REACT_APP_API_BASE || "http://127.0.0.1:8000";
 
 async function http(path, opts = {}) {
@@ -7,27 +7,37 @@ async function http(path, opts = {}) {
     ...opts,
   });
   if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`HTTP ${res.status}: ${txt}`);
+    const text = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}: ${text}`);
   }
-  return res.json();
+  return res.status === 204 ? null : res.json();
 }
 
-export async function createUser(payload) {
-  return http("/users/", { method: "POST", body: JSON.stringify(payload) });
-}
+export const api = {
+  API_BASE,
 
-export async function listUsers() {
-  return http("/users/");
-}
+  // Users
+  createUser: (body) =>
+    http(`/users/`, { method: "POST", body: JSON.stringify(body) }),
 
-export async function findUserByEmail(email) {
-  const items = await listUsers();
-  return (items || []).find((u) => u.email === email) || null;
-}
+  listUsers: () => http(`/users/`),
 
-export async function updateUser(userId, payload) {
-  return http(`/users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) });
-}
+  getUser: (id) => http(`/users/${id}`),
 
+  updateUser: (id, body) =>
+    http(`/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  deleteUser: (id) => http(`/users/${id}`, { method: "DELETE" }),
+
+  // Convenience helpers
+  async findUserByEmail(email) {
+    const users = await this.listUsers();
+    return (users || []).find((u) => u.email?.toLowerCase() === email?.toLowerCase()) || null;
+  },
+
+  // Day 4 recommender endpoint (optional; ignore if you didn't add a backend route)
+  recommend: (userId) => http(`/users/match/${userId}`),
+};
+
+export default api;
 export { API_BASE };

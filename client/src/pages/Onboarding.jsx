@@ -1,200 +1,74 @@
+
 // src/pages/Onboarding.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../lib/firebase";
-import { createUser, findUserByEmail } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 
 export default function Onboarding() {
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const [checking, setChecking] = useState(true);
-  const [hasProfile, setHasProfile] = useState(false);
-
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    formState: { isSubmitting },
-  } = useForm({
-    defaultValues: {
-      full_name: "",
-      email: "",
-      headline: "",
-      skills_csv: "",
-      interests_csv: "",
-      github_url: "",
-      colab_url: "",
-    },
-  });
+  const { register, handleSubmit, setValue } = useForm();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        navigate("/login");
-        return;
-      }
-      // prefill email from Firebase user
-      setValue("email", u.email || "");
+    if (!user) {
+      navigate("/login");
+      return;
+    }
 
+    // load existing profile
+    (async () => {
       try {
-        const existing = await findUserByEmail(u.email);
-        if (existing) setHasProfile(true);
-      } finally {
-        setChecking(false);
+        const profile = await api.findUserByEmail(user.email);
+        if (profile) {
+          setValue("full_name", profile.full_name);
+          setValue("email", profile.email);
+          setValue("headline", profile.headline || "");
+          setValue("skills", (profile.skills || []).join(", "));
+          setValue("interests", (profile.interests || []).join(", "));
+          setValue("github_url", profile.github_url || "");
+          setValue("colab_url", profile.colab_url || "");
+        } else {
+          setValue("email", user.email);
+        }
+      } catch (e) {
+        console.error("Failed to load profile:", e);
       }
-    });
-    return () => unsub();
-  }, [navigate, setValue]);
-
-  const csv = (s) =>
-    (s || "")
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
+    })();
+  }, [user, navigate, setValue]);
 
   const onSubmit = async (values) => {
-    const payload = {
-      full_name: values.full_name || "",
-      email: values.email || "",
-      headline: values.headline || null,
-      skills: csv(values.skills_csv),
-      interests: csv(values.interests_csv),
-      github_url: values.github_url || null,
-      colab_url: values.colab_url || null,
-    };
     try {
-      await createUser(payload);
+      const payload = {
+        ...values,
+        skills: values.skills.split(",").map((s) => s.trim()).filter(Boolean),
+        interests: values.interests.split(",").map((i) => i.trim()).filter(Boolean),
+      };
+
+      await api.createUser(payload); // or update if exists
       navigate("/dashboard");
     } catch (e) {
-      console.error("Create user error:", e);
-      alert("Unable to save profile. Make sure the backend is running.");
+      console.error("Error saving profile:", e);
+      alert("Unable to save profile");
     }
   };
 
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-slate-600">Loading…</div>
-      </div>
-    );
-  }
-
-  if (hasProfile) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-indigo-50">
-      <div className="bg-white rounded-lg shadow-md p-6 w-full max-w-lg text-center">
-        <h1 className="text-xl font-semibold mb-2">Profile already exists</h1>
-        <p className="text-slate-600 mb-6">
-          You can go to your dashboard or edit your profile.
-        </p>
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium py-2 px-4 rounded"
-          >
-            Go to Dashboard
-          </button>
-          <button
-            onClick={() => navigate("/profile")}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded"
-          >
-            Edit Profile
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-  // Show onboarding form
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-indigo-50">
-      <div className="bg-white rounded-lg shadow-md p-6 w-full max-w-lg">
-        <h1 className="text-xl font-semibold mb-1">Create your profile</h1>
-        <p className="text-sm text-slate-600 mb-4">
-          This helps us match you with peers.
-        </p>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
-          <div>
-            <label className="block text-sm mb-1">Full Name *</label>
-            <input
-              className="w-full border rounded px-3 py-2"
-              {...register("full_name", { required: true })}
-              placeholder="Your Name"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm mb-1">Email *</label>
-            <input
-              type="email"
-              className="w-full border rounded px-3 py-2"
-              {...register("email", { required: true })}
-              readOnly
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm mb-1">Headline</label>
-            <input
-              className="w-full border rounded px-3 py-2"
-              {...register("headline")}
-              placeholder="Aspiring DS • Learning NLP"
-            />
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm mb-1">Skills (comma separated)</label>
-              <input
-                className="w-full border rounded px-3 py-2"
-                {...register("skills_csv")}
-                placeholder="python, sql, pandas"
-              />
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Interests (comma separated)</label>
-              <input
-                className="w-full border rounded px-3 py-2"
-                {...register("interests_csv")}
-                placeholder="nlp, viz"
-              />
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm mb-1">GitHub URL</label>
-              <input
-                className="w-full border rounded px-3 py-2"
-                {...register("github_url")}
-                placeholder="https://github.com/yourname"
-              />
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Colab URL</label>
-              <input
-                className="w-full border rounded px-3 py-2"
-                {...register("colab_url")}
-                placeholder="https://colab.research.google.com/..."
-              />
-            </div>
-          </div>
-
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded disabled:bg-indigo-300"
-            >
-              {isSubmitting ? "Saving..." : "Save profile"}
-            </button>
-          </div>
-        </form>
-      </div>
+    <div className="max-w-lg mx-auto p-6 bg-white shadow rounded">
+      <h1 className="text-xl font-bold mb-4">Edit Profile</h1>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+        <input {...register("full_name")} placeholder="Full Name" className="border p-2 w-full" />
+        <input {...register("email")} placeholder="Email" disabled className="border p-2 w-full" />
+        <input {...register("headline")} placeholder="Headline" className="border p-2 w-full" />
+        <input {...register("skills")} placeholder="Skills (comma separated)" className="border p-2 w-full" />
+        <input {...register("interests")} placeholder="Interests (comma separated)" className="border p-2 w-full" />
+        <input {...register("github_url")} placeholder="GitHub URL" className="border p-2 w-full" />
+        <input {...register("colab_url")} placeholder="Colab URL" className="border p-2 w-full" />
+        <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded">
+          Save changes
+        </button>
+      </form>
     </div>
   );
 }
