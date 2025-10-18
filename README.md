@@ -1,13 +1,6 @@
 # PeerConnect DS
-Here’s a simplified and more traditional style README for your **PeerConnect DS** project:
-
----
-
-# PeerConnect DS
 
 PeerConnect DS is a **full-stack peer learning platform** that allows users to connect based on shared skills and learning goals. It includes user authentication, profile management, and a simple recommendation feature.
-
----
 
 ## Features
 
@@ -17,8 +10,6 @@ PeerConnect DS is a **full-stack peer learning platform** that allows users to c
 * **Full CRUD Operations** for user data
 * **Responsive UI** built with Tailwind CSS
 * **REST API** powered by FastAPI and PostgreSQL (Supabase)
-
----
 
 ## Tech Stack
 
@@ -176,8 +167,6 @@ npm start
   cd client
   npm start
   ```
-
----
 
 ## Deployment (Future Scope)
 
